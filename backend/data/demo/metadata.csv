@@ -1,0 +1,10 @@
+source_name,object_name,field_name,class_key,purpose_text,retention_duration,retention_basis,last_reviewed_at,owner_label,evidence_reference
+admissions.csv,admissions.csv,guardian_phone,PHONE,Emergency guardian contact,24 months,Admission policy,2026-09-01,Admissions team,SYN-POL-01
+events.csv,events.csv,Phone Data Detected,PHONE,,90 days,Event cleanup schedule,2026-09-01,Events team,SYN-POL-02
+support.db,tickets,mobile,PHONE,Support callback,,,2026-09-01,Support team,SYN-POL-03
+admissions.csv,admissions.csv,student_email,EMAIL,Admission communication,24 months,Admission policy,2026-09-01,Admissions team,SYN-POL-01
+events.csv,events.csv,email_address,EMAIL,Event notifications,90 days,Event cleanup schedule,2026-09-01,Events team,SYN-POL-02
+admissions.csv,admissions.csv,student_name,PERSON_NAME,Admission administration,24 months,Admission policy,2026-09-01,Admissions team,SYN-POL-01
+admissions.csv,admissions.csv,home_address,ADDRESS,Eligibility correspondence,24 months,Admission policy,2026-09-01,Admissions team,SYN-POL-01
+admissions.csv,admissions.csv,student_id,PERSONAL_ID,Student record linkage,24 months,Admission policy,2026-09-01,Admissions team,SYN-POL-01
+

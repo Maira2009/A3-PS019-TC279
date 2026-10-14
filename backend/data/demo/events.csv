@@ -1,0 +1,6 @@
+event_id,attendee_name,Phone Data Detected,email_address,city,email_template_name,ticket_count
+EVT-101,Aarav Demo,+91 98765 43210,aarav.demo@example.com,Pune,welcome_email_v2,2
+EVT-102,Noor Example,+91 93333 44444,noor.example@example.com,Kochi,reminder_email_v1,1
+EVT-103,Diya Example,+91 91234 56789,diya.example@example.com,Mumbai,welcome_email_v2,3
+EVT-104,Vivaan Sample,+91 94444 55555,vivaan.sample@example.com,Jaipur,followup_email_v1,1
+

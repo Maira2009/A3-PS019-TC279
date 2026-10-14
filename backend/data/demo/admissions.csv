@@ -1,0 +1,6 @@
+admission_id,student_name,guardian_phone,student_email,home_address,postal_code,student_id,phone_model,fee_amount
+ADM-001,Aarav Demo,+91 98765 43210,aarav.demo@example.com,12 Sample Road Pune,411001,STU-1001,Pixel Demo,25000
+ADM-002,Diya Example,+91 91234 56789,diya.example@example.com,8 Test Avenue Mumbai,400001,STU-1002,Galaxy Demo,27500
+ADM-003,Kabir Sample,+91 90000 11111,kabir.sample@example.com,44 Fiction Lane Delhi,110001,STU-1003,Nova Demo,26500
+ADM-004,Meera Placeholder,+91 95555 22222,meera.placeholder@example.com,5 Prototype Street Chennai,600001,STU-1004,Pixel Demo,25500
+

@@ -1,0 +1,21 @@
+dataset_key,source_name,object_name,field_name,expected_class_key,label,annotation_note
+demo-v1,admissions.csv,admissions.csv,guardian_phone,PHONE,positive,Synthetic phone field
+demo-v1,events.csv,events.csv,Phone Data Detected,PHONE,positive,Synthetic phone alias from presentation
+demo-v1,support.db,tickets,mobile,PHONE,positive,Synthetic phone alias in SQLite
+demo-v1,admissions.csv,admissions.csv,student_email,EMAIL,positive,Synthetic email field
+demo-v1,events.csv,events.csv,email_address,EMAIL,positive,Synthetic email field
+demo-v1,support.db,tickets,contact_email,EMAIL,positive,Synthetic email field
+demo-v1,admissions.csv,admissions.csv,student_name,PERSON_NAME,positive,Synthetic person name field
+demo-v1,events.csv,events.csv,attendee_name,PERSON_NAME,positive,Synthetic person name field
+demo-v1,support.db,tickets,customer_name,PERSON_NAME,positive,Synthetic person name field
+demo-v1,admissions.csv,admissions.csv,home_address,ADDRESS,positive,Synthetic address field
+demo-v1,admissions.csv,admissions.csv,postal_code,ADDRESS,positive,Synthetic postal-code field
+demo-v1,support.db,tickets,address,ADDRESS,positive,Synthetic address field
+demo-v1,admissions.csv,admissions.csv,student_id,PERSONAL_ID,positive,Synthetic personal identifier field
+demo-v1,support.db,tickets,customer_id,PERSONAL_ID,positive,Synthetic personal identifier field
+demo-v1,admissions.csv,admissions.csv,phone_model,NONE,negative,Negative control containing phone token
+demo-v1,events.csv,events.csv,email_template_name,NONE,negative,Negative control containing email token
+demo-v1,events.csv,events.csv,ticket_count,NONE,negative,Generic non-personal counter
+demo-v1,admissions.csv,admissions.csv,fee_amount,NONE,negative,Numeric transaction amount
+demo-v1,support.db,tickets,retry_count,NONE,negative,Generic operational counter
+
