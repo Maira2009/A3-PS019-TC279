@@ -1,4 +1,4 @@
-export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
+export const API_BASE = import.meta.env.VITE_API_BASE ?? (import.meta.env.DEV ? "" : "http://127.0.0.1:8000");
 
 export class ApiError extends Error {
   code: string;
@@ -9,11 +9,16 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, init);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, init);
+  } catch {
+    throw new ApiError("API_UNREACHABLE", "Cannot reach the local DATAQUEST backend. Keep its terminal open, check http://127.0.0.1:8000/health, then retry.");
+  }
   if (!response.ok) {
     let body: { error?: { code?: string; message?: string } } = {};
     try { body = await response.json(); } catch { /* safe fallback */ }
-    throw new ApiError(body.error?.code ?? "REQUEST_FAILED", body.error?.message ?? `Request failed (${response.status})`);
+    throw new ApiError(body.error?.code ?? "REQUEST_FAILED", body.error?.message ?? (response.status >= 500 ? "The local backend did not respond. Check its terminal for an error, then retry." : `Request failed (${response.status})`));
   }
   return response.json() as Promise<T>;
 }

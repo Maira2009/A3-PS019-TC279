@@ -50,3 +50,5 @@ Blank scope columns broaden a declaration. Matching precedence is exact field, s
 
 The unit is one exact `source_name + object_name + field_name + class_key` combination. A wrong-class prediction creates a false positive for the predicted class and a false negative for the expected class. Gold negatives remain in the denominator even when no finding exists.
 
+For a custom scan, download its label template and upload a UTF-8 CSV with `dataset_key,source_name,object_name,field_name,expected_class_key,label,annotation_note`. Use one row per labelled field. `expected_class_key` is one of PHONE, EMAIL, PERSON_NAME, ADDRESS, PERSONAL_ID for a `positive` row, or NONE for a `negative` row. Source, object, and field must exactly match that scan. Unlabelled fields do not enter the metric denominator. Demo labels are stored only with the demo scan.
+

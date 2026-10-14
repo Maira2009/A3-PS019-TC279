@@ -104,16 +104,23 @@ def infer_type(values: list[Any]) -> str:
 
 
 def read_csv_fields(path: Path, source_id: str, source_name: str, row_limit: int) -> list[FieldData]:
-    if path.stat().st_size == 0:
-        return []
     warnings: list[str] = []
     try:
-        frame = pd.read_csv(path, dtype=object, nrows=row_limit, encoding="utf-8-sig", on_bad_lines="skip")
-    except UnicodeDecodeError:
-        warnings.append("UTF-8 decoding failed; Windows-1252 fallback used.")
-        frame = pd.read_csv(path, dtype=object, nrows=row_limit, encoding="cp1252", on_bad_lines="skip")
+        if path.stat().st_size == 0:
+            return []
+        try:
+            frame = pd.read_csv(path, dtype=object, nrows=row_limit, encoding="utf-8-sig", on_bad_lines="skip")
+        except UnicodeDecodeError:
+            warnings.append("UTF-8 decoding failed; Windows-1252 fallback used.")
+            frame = pd.read_csv(path, dtype=object, nrows=row_limit, encoding="cp1252", on_bad_lines="skip")
     except pd.errors.EmptyDataError:
         return []
+    except (UnicodeError, pd.errors.ParserError, OSError) as exc:
+        raise AppError(
+            "CSV_UNREADABLE",
+            f"Could not read {source_name} as CSV. Check its encoding, header row, and quoting.",
+            400,
+        ) from exc
     if len(frame) >= row_limit:
         warnings.append(f"Row scan limit reached at {row_limit} rows.")
     duplicate_counts: Counter[str] = Counter()
@@ -288,6 +295,9 @@ def run_scan(scan_id: str, workspace_id: str, source_ids: list[str], options: di
             all_fields.extend(read_source(source, row_limit))
         except AppError as exc:
             failures.append({"source_id": source["id"], "source": source["display_name"], "error": exc.message})
+        except OSError as exc:
+            failures.append({"source_id": source["id"], "source": source["display_name"],
+                             "error": "The copied source could not be opened. Check local storage and retry."})
 
     footprint_occurrences: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     finding_count = 0

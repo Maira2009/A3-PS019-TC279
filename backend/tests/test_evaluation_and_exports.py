@@ -20,6 +20,17 @@ def test_hand_verifiable_metrics():
     assert phone["precision"] == 0.5 and phone["recall"] == 0.5
 
 
+def test_unlabelled_predictions_are_not_counted_as_false_positives():
+    gold = [{"dataset_key": "sample", "source_name": "a", "object_name": "a", "field_name": "phone",
+             "expected_class_key": "PHONE", "label": "positive"}]
+    predictions = [
+        {"source_name": "a", "object_name": "a", "field_name": "phone", "class_key": "PHONE"},
+        {"source_name": "a", "object_name": "a", "field_name": "unlabelled", "class_key": "PHONE"},
+    ]
+    phone = calculate_metrics(gold, predictions)["per_class"]["PHONE"]
+    assert phone["tp"] == 1 and phone["fp"] == 0
+
+
 def test_formula_injection_is_neutralized():
     data = csv_bytes([{"field": "=HYPERLINK(\"bad\")", "safe": "text"}]).decode("utf-8-sig")
     row = next(csv.DictReader(io.StringIO(data)))

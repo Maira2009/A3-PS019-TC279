@@ -34,24 +34,26 @@ function App() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const guard = useCallback(async <T,>(operation: () => Promise<T>): Promise<T | undefined> => {
+  const guard = useCallback(async <T,>(operation: () => Promise<T>, onError?: (error: Error) => void): Promise<T | undefined> => {
     setError(""); setBusy(true);
     try { return await operation(); }
-    catch (e) { setError(e instanceof Error ? e.message : "Unexpected error"); return undefined; }
+    catch (e) { const error = e instanceof Error ? e : new Error("Unexpected error"); setError(error.message); onError?.(error); return undefined; }
     finally { setBusy(false); }
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (active: { workspaceId?: string; scanId?: string } = {}) => {
+    const activeWorkspaceId = active.workspaceId ?? workspaceId;
+    const activeScanId = active.scanId ?? scanId;
     const tasks: Promise<unknown>[] = [api.get("/health").then(v => setHealth(v as typeof health)), api.get<Page<Workspace>>("/api/v1/workspaces").then(v => setWorkspaces(v.items))];
-    if (workspaceId) {
-      tasks.push(api.get<Page<Source>>(`/api/v1/workspaces/${workspaceId}/sources`).then(v => setSources(v.items)));
-      tasks.push(api.get<Page<Metadata>>(`/api/v1/workspaces/${workspaceId}/metadata`).then(v => setMetadata(v.items)));
+    if (activeWorkspaceId) {
+      tasks.push(api.get<Page<Source>>(`/api/v1/workspaces/${activeWorkspaceId}/sources`).then(v => setSources(v.items)));
+      tasks.push(api.get<Page<Metadata>>(`/api/v1/workspaces/${activeWorkspaceId}/metadata`).then(v => setMetadata(v.items)));
     }
     tasks.push(api.get<{ items: Rule[] }>("/api/v1/rules").then(v => setRules(v.items)));
-    if (scanId) {
-      tasks.push(api.get<Scan>(`/api/v1/scans/${scanId}`).then(v => { setScan(v); setSummary(v.summary ?? null); }));
-      tasks.push(api.get<Page<Finding>>(`/api/v1/scans/${scanId}/findings?limit=500`).then(v => setFindings(v.items)));
-      tasks.push(api.get<Page<Footprint>>(`/api/v1/scans/${scanId}/footprints?limit=500`).then(v => setFootprints(v.items)));
+    if (activeScanId) {
+      tasks.push(api.get<Scan>(`/api/v1/scans/${activeScanId}`).then(v => { setScan(v); setSummary(v.summary ?? null); }));
+      tasks.push(api.get<Page<Finding>>(`/api/v1/scans/${activeScanId}/findings?limit=500`).then(v => setFindings(v.items)));
+      tasks.push(api.get<Page<Footprint>>(`/api/v1/scans/${activeScanId}/footprints?limit=500`).then(v => setFootprints(v.items)));
     }
     await Promise.all(tasks);
   }, [workspaceId, scanId]);
@@ -61,9 +63,9 @@ function App() {
 
   const chooseWorkspace = (id: string) => {
     setWorkspaceId(id); localStorage.setItem("dq_workspace", id);
-    setScanId(""); localStorage.removeItem("dq_scan"); setScan(null); setSummary(null); setFindings([]); setFootprints([]);
+    setScanId(""); localStorage.removeItem("dq_scan"); setScan(null); setSummary(null); setFindings([]); setFootprints([]); setEvaluation(null);
   };
-  const chooseScan = (id: string) => { setScanId(id); localStorage.setItem("dq_scan", id); };
+  const chooseScan = (id: string) => { setScanId(id); localStorage.setItem("dq_scan", id); setEvaluation(null); };
   const pageProps = { workspaceId, scanId, sources, scan, summary, findings, footprints, metadata, rules, evaluation, health, busy, guard, refresh, chooseWorkspace, chooseScan, setRules, setEvaluation };
 
   return <AppShell page={page}>
@@ -89,7 +91,7 @@ type Props = {
   workspaceId: string; scanId: string; sources: Source[]; scan: Scan | null; summary: Summary | null;
   findings: Finding[]; footprints: Footprint[]; metadata: Metadata[]; rules: Rule[]; evaluation: Evaluation | null;
   health: { status: string; version: string; local_only: boolean } | null; busy: boolean;
-  guard: <T>(op: () => Promise<T>) => Promise<T | undefined>; refresh: () => Promise<void>;
+  guard: <T>(op: () => Promise<T>, onError?: (error: Error) => void) => Promise<T | undefined>; refresh: (active?: { workspaceId?: string; scanId?: string }) => Promise<void>;
   chooseWorkspace: (id: string) => void; chooseScan: (id: string) => void; setRules: (rules: Rule[]) => void;
   setEvaluation: (evaluation: Evaluation | null) => void;
 };
@@ -97,7 +99,7 @@ type Props = {
 function WelcomePage(props: Props & { workspaces: Workspace[] }) {
   const [name, setName] = useState("");
   const create = async (e: FormEvent) => { e.preventDefault(); const item = await props.guard(() => api.post<Workspace>("/api/v1/workspaces", { name })); if (item) { props.chooseWorkspace(item.id); setName(""); location.hash = "sources"; } };
-  const demo = async () => { const result = await props.guard(() => api.post<DemoResponse>("/api/v1/demo")); if (result) { props.chooseWorkspace(result.workspace.id); props.chooseScan(result.scan.id); await props.refresh(); location.hash = "dashboard"; } };
+  const demo = async () => { const result = await props.guard(() => api.post<DemoResponse>("/api/v1/demo")); if (result) { props.chooseWorkspace(result.workspace.id); props.chooseScan(result.scan.id); await props.refresh({ workspaceId: result.workspace.id, scanId: result.scan.id }); location.hash = "dashboard"; } };
   return <section className="page welcome-page">
     <div className="hero">
       <p className="eyebrow">AIORI 3 · PS 019</p><h1>Personal data discovery with an evidence trail</h1>
@@ -114,24 +116,63 @@ function WelcomePage(props: Props & { workspaces: Workspace[] }) {
 
 function SourcesPage(props: Props) {
   const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const [profile, setProfile] = useState<{ source_id: string; items: { object_name: string; field_name: string }[]; total: number } | null>(null);
-  const upload = async () => { if (!props.workspaceId || !files.length) return; const result = await props.guard(() => api.upload<Page<Source>>(`/api/v1/workspaces/${props.workspaceId}/sources`, files)); if (result) { setFiles([]); await props.refresh(); } };
+  const upload = async () => { if (!props.workspaceId || !files.length || uploading) return; setUploading(true); setUploadError(""); const result = await props.guard(() => api.upload<Page<Source>>(`/api/v1/workspaces/${props.workspaceId}/sources`, files), error => setUploadError(error.message)); if (result) { setFiles([]); await props.guard(() => props.refresh(), error => setUploadError(error.message)); } setUploading(false); };
   const remove = async (id: string) => { if (!confirm("Remove this copied source and any scans that use it? The original file stays untouched.")) return; await props.guard(() => api.del(`/api/v1/sources/${id}?confirm=true`)); await props.refresh(); };
   const inspect = async (id: string) => { const result = await props.guard(() => api.post<{ source_id: string; items: { object_name: string; field_name: string }[]; total: number }>(`/api/v1/sources/${id}/profile`)); if (result) setProfile(result); };
   return <section className="page"><PageHeader eyebrow="02 · Ingestion" title="Source manager" description="Register CSV files and SQLite databases. DATAQUEST copies files into local application storage and never modifies originals." actions={<a className="secondary" href="#scan">Configure scan</a>} />
-    {!props.workspaceId ? <NeedWorkspace /> : <><div className="upload-zone"><div><strong>Add local sources</strong><p>CSV, DB, SQLITE, or SQLITE3. Maximum 25 MB per file.</p></div><label className="file-button">Choose files<input type="file" multiple accept=".csv,.db,.sqlite,.sqlite3" onChange={e => setFiles(Array.from(e.target.files ?? []))} /></label>{files.length > 0 && <><span>{files.length} file{files.length > 1 ? "s" : ""} ready</span><button className="primary" onClick={upload}>Upload copies</button></>}</div>
+    {!props.workspaceId ? <NeedWorkspace /> : <><div className="upload-zone"><div><strong>Upload your files</strong><p>CSV, DB, SQLITE, or SQLITE3. Maximum 25 MB per file. Choose files, then click Upload copies.</p></div><label className="file-button">Choose CSV or SQLite files<input type="file" multiple accept=".csv,.db,.sqlite,.sqlite3" onChange={e => setFiles(Array.from(e.target.files ?? []))} /></label>{files.length > 0 && <><span>{files.map(file => file.name).join(", ")}</span><button className="primary" disabled={uploading} onClick={upload}>{uploading ? "Uploading..." : "Upload copies"}</button></>}</div>{uploadError && <p className="scan-feedback scan-feedback-error" role="alert">{uploadError}</p>}
     <div className="panel table-panel"><div className="panel-heading"><h2>Registered sources</h2><span>{props.sources.length} source{props.sources.length !== 1 ? "s" : ""}</span></div>{props.sources.length ? <table><thead><tr><th>Source</th><th>Type</th><th>Size</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{props.sources.map(source => <tr key={source.id}><td><strong>{source.display_name}</strong><small>{source.id.slice(0, 8)}</small></td><td>{source.source_type.toUpperCase()}</td><td>{(source.file_size_bytes / 1024).toFixed(1)} KB</td><td><StatusBadge value={source.status} /></td><td><div className="button-row"><button className="secondary" onClick={() => inspect(source.id)}>Profile</button><button className="text-danger" onClick={() => remove(source.id)}>Remove</button></div></td></tr>)}</tbody></table> : <EmptyState title="No sources yet" body="Choose at least two CSVs and one SQLite database, or load the synthetic demo." />}</div>{profile && <div className="panel profile-summary"><button className="drawer-close" onClick={() => setProfile(null)} aria-label="Close profile">×</button><h2>Profile summary</h2><p>{profile.total} fields across {new Set(profile.items.map(item => item.object_name)).size} objects</p><div className="tag-list">{profile.items.map((item, i) => <span key={`${item.object_name}-${item.field_name}-${i}`}>{item.object_name} / {item.field_name}</span>)}</div></div>}</>}
   </section>;
 }
 
 function ScanPage(props: Props) {
   const [selected, setSelected] = useState<string[]>(props.sources.map(s => s.id));
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const [rowLimit, setRowLimit] = useState(100000); const [sampleLimit, setSampleLimit] = useState(500);
+  const [scanning, setScanning] = useState(false);
+  const [scanError, setScanError] = useState("");
+  const [failedSources, setFailedSources] = useState<Summary["failed_sources"]>([]);
   useEffect(() => setSelected(props.sources.map(s => s.id)), [props.sources]);
-  const run = async () => { const result = await props.guard(() => api.post<Scan>(`/api/v1/workspaces/${props.workspaceId}/scans`, { source_ids: selected, options: { row_limit_per_table: rowLimit, sample_limit_per_field: sampleLimit, include_footprints: true } })); if (result) { props.chooseScan(result.id); await props.refresh(); location.hash = "dashboard"; } };
+  const upload = async () => {
+    if (!props.workspaceId || !files.length || uploading) return;
+    setUploading(true);
+    setUploadError("");
+    const result = await props.guard(() => api.upload<Page<Source>>(`/api/v1/workspaces/${props.workspaceId}/sources`, files), error => setUploadError(error.message));
+    if (result) { setFiles([]); await props.guard(() => props.refresh(), error => setUploadError(error.message)); }
+    setUploading(false);
+  };
+  const run = async () => {
+    if (!selected.length || scanning) return;
+    setScanning(true);
+    setScanError("");
+    setFailedSources([]);
+    const result = await props.guard(async () => {
+      const scan = await api.post<Scan>(`/api/v1/workspaces/${props.workspaceId}/scans`, {
+        source_ids: selected,
+        options: { row_limit_per_table: rowLimit, sample_limit_per_field: sampleLimit, include_footprints: true }
+      });
+      props.chooseScan(scan.id);
+      await props.refresh({ scanId: scan.id });
+      return scan;
+    }, error => setScanError(error.message));
+    setScanning(false);
+    if (!result) return;
+    if (result.summary?.failed_sources?.length) setFailedSources(result.summary.failed_sources);
+    if (result.status === "failed") {
+      setScanError("No selected source could be read. Check the source errors below and retry.");
+      return;
+    }
+    if (result.status === "partial") return;
+    location.hash = "dashboard";
+  };
   return <section className="page"><PageHeader eyebrow="03 · Configure" title="Scan configuration" description="Choose sources and bounded scan limits. The stage shown after completion comes from the backend scan record." actions={<a className="secondary" href="#rules">Edit detection rules</a>} />
-    {!props.workspaceId ? <NeedWorkspace /> : <div className="split-grid"><article className="panel"><h2>Sources</h2><div className="check-list">{props.sources.map(source => <label key={source.id}><input type="checkbox" checked={selected.includes(source.id)} onChange={e => setSelected(e.target.checked ? [...selected, source.id] : selected.filter(id => id !== source.id))} /><span><strong>{source.display_name}</strong><small>{source.source_type.toUpperCase()}</small></span></label>)}</div></article>
-    <article className="panel"><h2>Limits</h2><div className="form-grid"><label>Rows per table<input type="number" min="1" max="1000000" value={rowLimit} onChange={e => setRowLimit(Number(e.target.value))} /></label><label>Samples per field<input type="number" min="1" max="10000" value={sampleLimit} onChange={e => setSampleLimit(Number(e.target.value))} /></label></div><p className="muted">Larger limits increase local processing time. Raw values remain inside the backend and are not returned to the browser.</p><button className="primary full" disabled={!selected.length} onClick={run}>Start local scan</button>{props.scan && <div className="scan-result"><StatusBadge value={props.scan.status} /><span>Stage: {props.scan.stage}</span></div>}</article></div>}
+    {!props.workspaceId ? <NeedWorkspace /> : <><div className="upload-zone"><div><strong>Upload your CSV or SQLite files here</strong><p>Choose files, click Upload copies, then select them below and start the scan.</p></div><label className="file-button">Choose CSV or SQLite files<input type="file" multiple accept=".csv,.db,.sqlite,.sqlite3" onChange={e => setFiles(Array.from(e.target.files ?? []))} /></label>{files.length > 0 && <><span>{files.map(file => file.name).join(", ")}</span><button className="primary" disabled={uploading} onClick={upload}>{uploading ? "Uploading..." : "Upload copies"}</button></>}</div>{uploadError && <p className="scan-feedback scan-feedback-error" role="alert">{uploadError}</p>}<div className="split-grid"><article className="panel"><h2>Sources</h2><div className="check-list">{props.sources.map(source => <label key={source.id}><input type="checkbox" checked={selected.includes(source.id)} onChange={e => setSelected(e.target.checked ? [...selected, source.id] : selected.filter(id => id !== source.id))} /><span><strong>{source.display_name}</strong><small>{source.source_type.toUpperCase()}</small></span></label>)}</div></article>
+    <article className="panel"><h2>Limits</h2><div className="form-grid"><label>Rows per table<input type="number" min="1" max="1000000" value={rowLimit} onChange={e => setRowLimit(Number(e.target.value))} /></label><label>Samples per field<input type="number" min="1" max="10000" value={sampleLimit} onChange={e => setSampleLimit(Number(e.target.value))} /></label></div><p className="muted">Larger limits increase local processing time. Raw values remain inside the backend and are not returned to the browser.</p><button className="primary full" disabled={!selected.length || scanning || props.health?.status !== "ok"} onClick={run}>{scanning ? "Scanning selected sources..." : "Start local scan"}</button>{scanning && <p className="scan-feedback" role="status">The local scan is running. Keep both service windows open; larger files can take longer.</p>}{!selected.length && <p className="scan-feedback">Select at least one source above to enable scanning.</p>}{props.health?.status !== "ok" && <div className="scan-feedback" role="alert">The local API is unavailable. Keep the backend terminal running, confirm <code>http://127.0.0.1:8000/health</code> opens, then <button className="secondary" onClick={() => props.guard(() => props.refresh())}>Retry connection</button>.</div>}{scanError && <p className="scan-feedback scan-feedback-error" role="alert">{scanError}</p>}{failedSources.length > 0 && <div className="scan-feedback scan-feedback-error"><strong>Source errors</strong><ul>{failedSources.map(source => <li key={source.source_id}>{source.source}: {source.error}</li>)}</ul></div>}{props.scan && <div className="scan-result"><StatusBadge value={props.scan.status} /><span>Stage: {props.scan.stage}</span></div>}</article></div></>}
   </section>;
 }
 
@@ -195,9 +236,27 @@ function ReviewPage(props: Props) {
 }
 
 function EvaluationPage(props: Props) {
+  const [labels, setLabels] = useState<{ dataset_key: string | null; labelled_count: number } | null>(null);
+  const [labelFile, setLabelFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [labelStatusError, setLabelStatusError] = useState("");
+  useEffect(() => {
+    let active = true;
+    setLabels(null);
+    setLabelStatusError("");
+    if (props.scanId) api.get<{ dataset_key: string | null; labelled_count: number }>(`/api/v1/scans/${props.scanId}/evaluation/labels`).then(value => { if (active) setLabels(value); }).catch(() => { if (active) setLabelStatusError("Could not load the labels for this scan. Check the backend connection and reopen Evaluation."); });
+    return () => { active = false; };
+  }, [props.scanId]);
+  const uploadLabels = async () => {
+    if (!props.scanId || !labelFile || uploading) return;
+    setUploading(true);
+    const result = await props.guard(() => api.upload<{ dataset_key: string; labelled_count: number }>(`/api/v1/scans/${props.scanId}/evaluation/labels`, [labelFile], "file"));
+    if (result) { setLabels(result); setLabelStatusError(""); setLabelFile(null); props.setEvaluation(null); }
+    setUploading(false);
+  };
   const run = async () => { const result = await props.guard(() => api.post<Evaluation>(`/api/v1/scans/${props.scanId}/evaluation`)); if (result) props.setEvaluation(result); };
-  return <section className="page"><PageHeader eyebrow="09 · Reproducible test" title="Synthetic evaluation" description="Metrics compare exact source, object, field, and class predictions against manually labelled positives and negatives." actions={<button className="primary" disabled={!props.scanId} onClick={run}>Run evaluation</button>} />
-    {!props.scanId ? <NeedScan /> : !props.evaluation ? <EmptyState title="Not evaluated" body="Run the included gold-label dataset. No placeholder metrics are shown." /> : <><div className="metric-grid"><div className="metric"><span>Labelled fields</span><strong>{props.evaluation.labelled_count}</strong></div></div><div className="panel table-panel"><table><thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>TP</th><th>FP</th><th>FN</th><th>TN</th><th>Support</th></tr></thead><tbody>{Object.entries(props.evaluation.per_class).map(([key, value]) => <tr key={key}><td><span className="class-chip">{key}</span></td><td>{formatMetric(value.precision)}</td><td>{formatMetric(value.recall)}</td><td>{value.tp}</td><td>{value.fp}</td><td>{value.fn}</td><td>{value.tn}</td><td>{value.support}</td></tr>)}</tbody></table></div><p className="disclaimer">{props.evaluation.caveat}</p></>}
+  return <section className="page"><PageHeader eyebrow="09 · Reproducible test" title="Evaluation" description="Metrics compare this scan's predictions with manual labels attached to this same scan—not with another dataset." actions={<button className="primary" disabled={!props.scanId || !labels?.labelled_count} onClick={run}>Run evaluation</button>} />
+    {!props.scanId ? <NeedScan /> : <><div className="panel"><h2>Manual labels for this scan</h2><p>{labelStatusError || (labels ? labels.labelled_count ? `${labels.labelled_count} labelled fields loaded (${labels.dataset_key}).` : "No labels are attached to this scan. Metrics are unavailable until you upload matching labels." : "Checking labels for this scan...")}</p><p className="muted">The synthetic demo brings its own 19 labels. For your files, download this scan's template, fill each row with a positive class or negative / NONE, save as UTF-8 CSV, then upload it.</p><div className="button-row"><a className="secondary" href={`${API_BASE}/api/v1/scans/${props.scanId}/evaluation/labels-template`}>Download label template</a><label className="file-button">Choose label CSV<input type="file" accept=".csv" onChange={e => setLabelFile(e.target.files?.[0] ?? null)} /></label>{labelFile && <button className="primary" disabled={uploading} onClick={uploadLabels}>{uploading ? "Uploading labels..." : `Upload labels: ${labelFile.name}`}</button>}</div></div>{!props.evaluation ? <EmptyState title="Not evaluated" body={labels?.labelled_count ? "Select Run evaluation to calculate metrics from these labels." : "Upload matching manual labels to enable evaluation. No placeholder metrics are shown."} /> : <><div className="metric-grid"><div className="metric"><span>Labelled fields</span><strong>{props.evaluation.labelled_count}</strong></div></div><div className="panel table-panel"><table><thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>TP</th><th>FP</th><th>FN</th><th>TN</th><th>Support</th></tr></thead><tbody>{Object.entries(props.evaluation.per_class).map(([key, value]) => <tr key={key}><td><span className="class-chip">{key}</span></td><td>{formatMetric(value.precision)}</td><td>{formatMetric(value.recall)}</td><td>{value.tp}</td><td>{value.fp}</td><td>{value.fn}</td><td>{value.tn}</td><td>{value.support}</td></tr>)}</tbody></table></div><p className="disclaimer">{props.evaluation.caveat}</p></>}</>}
   </section>;
 }
 

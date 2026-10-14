@@ -1,5 +1,18 @@
 # Verified test results
 
+## Scan, upload, and evaluation fix verification - 14 October 2026
+
+- Backend: `backend/.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider` - **18 passed**. This includes uploaded CSV partial/failure handling, custom scan refusing demo labels, exact-scan label CSV upload, computed custom metrics, mismatched-label rejection, demo-only labels, and exclusion of unlabelled fields from false positives.
+- Frontend: Vitest `run` - **2 test files, 6 tests passed**. This includes the scan click, lost-backend feedback, visible file upload on Scan, and custom-label gating on Evaluation.
+- TypeScript: `tsc -b` - **passed**.
+- Frontend production bundle: `vite build` - **passed** (18 modules; HTML 0.50 kB, CSS 15.30 kB, JavaScript 262.98 kB).
+- Windows launcher: started both services in this environment; `/health` returned `ok`, and the website returned HTTP 200. A pre-existing virtual environment was correctly reused.
+- Live HTTP workflow through the website's Vite proxy: demo scan completed (3 sources, 16 findings, 6 footprint groups, 19 labels); a freshly uploaded CSV scan completed (2 findings); evaluation correctly refused to run before labels, then a downloaded template, uploaded custom label CSV (3 fields), and custom evaluation succeeded.
+
+The only observed automated-test warning was a Starlette/AnyIO deprecation warning from a dependency. It did not affect test results. The user's particular uploaded file was not provided, so its exact format cannot be verified here.
+
+The earlier 11 October results below are retained as the original build record.
+
 Verification date: 2026-10-11
 
 ## Automated backend suite

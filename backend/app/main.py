@@ -18,7 +18,7 @@ from . import __version__
 from .config import ALLOWED_ORIGINS, DEMO_DIR, MAX_UPLOAD_BYTES, UPLOAD_DIR, ensure_dirs
 from .db import audit, connect, init_db, new_id, utcnow
 from .errors import AppError, app_error_handler, unexpected_error_handler, validation_error_handler
-from .evaluation import load_gold, run_evaluation
+from .evaluation import load_gold, parse_label_csv, label_template, run_evaluation, save_labels
 from .exporting import export_data
 from .processing import mask_value, paged_query, read_source, run_scan
 from .rules import get_rules, restore_defaults, save_rules
@@ -276,7 +276,8 @@ def create_scan(workspace_id: str, payload: ScanIn) -> dict[str, Any]:
             con.execute("UPDATE scans SET status='failed',stage='failed',finished_at=?,error_code=?,error_message_safe=? WHERE id=?",
                         (utcnow(), exc.code, exc.message, scan_id))
         raise
-    return {"id": scan_id, "status": "partial" if summary["failed_sources"] else "completed", "summary": summary}
+    status = "failed" if summary["failed_sources"] and summary["successful_source_count"] == 0 else "partial" if summary["failed_sources"] else "completed"
+    return {"id": scan_id, "status": status, "summary": summary}
 
 
 def scan_item(scan_id: str) -> dict[str, Any]:
@@ -446,6 +447,29 @@ def evaluation_start(scan_id: str) -> dict[str, Any]:
     return run_evaluation(scan_id)
 
 
+@app.get("/api/v1/scans/{scan_id}/evaluation/labels-template")
+def evaluation_label_template(scan_id: str) -> Response:
+    return Response(label_template(scan_id).encode("utf-8-sig"), media_type="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=dataquest-labels-template.csv"})
+
+
+@app.get("/api/v1/scans/{scan_id}/evaluation/labels")
+def evaluation_label_status(scan_id: str) -> dict[str, Any]:
+    with connect() as con:
+        require_row(con, "SELECT id FROM scans WHERE id=?", (scan_id,), "Scan")
+        row = con.execute("SELECT dataset_key,COUNT(*) AS labelled_count FROM evaluation_labels WHERE scan_id=?", (scan_id,)).fetchone()
+    return {"scan_id": scan_id, "dataset_key": row["dataset_key"] if row["labelled_count"] else None,
+            "labelled_count": row["labelled_count"]}
+
+
+@app.post("/api/v1/scans/{scan_id}/evaluation/labels")
+async def evaluation_upload_labels(scan_id: str, file: UploadFile = File(...)) -> dict[str, Any]:
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise AppError("INVALID_LABELS", "Choose a CSV label file.", 400)
+    content = await file.read(1024 * 1024 + 1)
+    return save_labels(scan_id, parse_label_csv(content))
+
+
 @app.get("/api/v1/evaluation/runs/{run_id}")
 def evaluation_get(run_id: str) -> dict[str, Any]:
     with connect() as con:
@@ -498,4 +522,5 @@ def load_demo() -> dict[str, Any]:
                 owner_label=row["owner_label"] or None, evidence_reference=row["evidence_reference"] or None,
             ))
     scan = create_scan(workspace["id"], ScanIn(source_ids=[item["id"] for item in source_items], options={"include_footprints": True}))
+    save_labels(scan["id"], load_gold())
     return {"workspace": workspace, "sources": source_items, "scan": scan}

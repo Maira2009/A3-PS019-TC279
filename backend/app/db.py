@@ -77,6 +77,13 @@ CREATE TABLE IF NOT EXISTS evaluation_runs (
   metrics_json TEXT NOT NULL, created_at TEXT NOT NULL,
   FOREIGN KEY(scan_id) REFERENCES scans(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS evaluation_labels (
+  id TEXT PRIMARY KEY, scan_id TEXT NOT NULL, dataset_key TEXT NOT NULL,
+  source_name TEXT NOT NULL, object_name TEXT NOT NULL, field_name TEXT NOT NULL,
+  expected_class_key TEXT NOT NULL, label TEXT NOT NULL, annotation_note TEXT NOT NULL,
+  UNIQUE(scan_id, source_name, object_name, field_name),
+  FOREIGN KEY(scan_id) REFERENCES scans(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS rule_versions (
   version TEXT PRIMARY KEY, config_json TEXT NOT NULL, created_at TEXT NOT NULL
 );

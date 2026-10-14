@@ -13,6 +13,7 @@ The backend binds to `127.0.0.1` by default. Development CORS accepts only `http
 - A random secret exists only while a scan builds overlap groups.
 - Exports omit raw values and internal fingerprints.
 - CSV outputs prefix text beginning with `=`, `+`, `-`, or `@` to reduce spreadsheet formula injection risk.
+- Manual evaluation labels are stored locally per scan; the bundled demo labels are never applied to uploaded sources. Label CSVs should contain field identifiers and class decisions only, not cell contents or personal data in annotation notes.
 
 ## Source handling
 

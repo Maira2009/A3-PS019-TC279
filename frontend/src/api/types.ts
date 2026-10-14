@@ -2,7 +2,7 @@ export type Page<T> = { items: T[]; total: number; limit?: number; offset?: numb
 export type Workspace = { id: string; name: string; created_at: string; status: string };
 export type Source = { id: string; workspace_id: string; display_name: string; source_type: string; file_size_bytes: number; status: string; warnings?: string[] };
 export type Scan = { id: string; status: string; stage: string; summary?: Summary; started_at?: string; finished_at?: string };
-export type Summary = { source_count: number; successful_source_count: number; object_count: number; profiled_field_count: number; finding_count: number; footprint_count: number; failed_sources: unknown[] };
+export type Summary = { source_count: number; successful_source_count: number; object_count: number; profiled_field_count: number; finding_count: number; footprint_count: number; failed_sources: { source_id: string; source: string; error: string }[] };
 export type Finding = {
   id: string; source_name: string; object_name: string; field_name: string; class_key: string;
   rule_strength: number; confidence_label: string; reason_codes?: string[]; explanation: string;
